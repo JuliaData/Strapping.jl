@@ -1,0 +1,20 @@
+name = "ORM"
+uuid = "3787371a-436b-4cb0-be6b-e772a55e3ebe"
+authors = ["Jacob Quinn <quinn.jacobd@gmail.com>"]
+version = "1.0.0"
+
+[deps]
+DBI = "a10d1c49-ce27-4219-8d33-6db1a4562965"
+StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
+
+[compat]
+julia = "1"
+DBI = "1"
+StructTypes = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+SQLite = "0aa819cd-b072-5ff4-a722-6bc24af294d9"
+
+[targets]
+test = ["Test", "SQLite"]
