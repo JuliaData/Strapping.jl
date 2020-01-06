@@ -1,15 +1,15 @@
 module ORM
 
-using DBI, StructTypes
+using DBInterface, StructTypes
 
 struct ORMException
     msg::String
 end
 
-select(conn::DBI.Connection, sql::AbstractString, ::Type{T}, args...; kw...) where {T} = select(DBI.prepare(conn, sql), T, args...; kw...)
+select(conn::DBInterface.Connection, sql::AbstractString, ::Type{T}, args...; kw...) where {T} = select(DBInterface.prepare(conn, sql), T, args...; kw...)
 
-function select(stmt::DBI.Statement, ::Type{T}, args...; kw...) where {T}
-    results = DBI.execute!(stmt, args...; kw...)
+function select(stmt::DBInterface.Statement, ::Type{T}, args...; kw...) where {T}
+    results = DBInterface.execute!(stmt, args...; kw...)
     state = iterate(results)
     state === nothing && throw(ORMException("can't select `$T` from empty resultset"))
     row, st = state
@@ -18,8 +18,8 @@ function select(stmt::DBI.Statement, ::Type{T}, args...; kw...) where {T}
     return x
 end
 
-function select(stmt::DBI.Statement, ::Type{Vector{T}}, args...; kw...) where {T}
-    results = DBI.execute!(stmt, args...; kw...)
+function select(stmt::DBInterface.Statement, ::Type{Vector{T}}, args...; kw...) where {T}
+    results = DBInterface.execute!(stmt, args...; kw...)
     state = iterate(results)
     A = Vector{T}(undef, 0)
     while state !== nothing

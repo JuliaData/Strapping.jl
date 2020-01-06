@@ -1,15 +1,15 @@
-using Test, StructTypes, SQLite, DBI, ORM
+using Test, StructTypes, SQLite, DBInterface, ORM
 
 db = SQLite.DB()
 
 # setup two tables
-DBI.execute!(db, "CREATE TABLE T (a INT, b REAL)")
-DBI.execute!(db, "INSERT INTO T VALUES(10, 3.14)")
+DBInterface.execute!(db, "CREATE TABLE T (a INT, b REAL)")
+DBInterface.execute!(db, "INSERT INTO T VALUES(10, 3.14)")
 
-DBI.execute!(db, "CREATE TABLE S (id INT, floats REAL)")
-DBI.execute!(db, "INSERT INTO S VALUES(10, 3.14)")
-DBI.execute!(db, "INSERT INTO S VALUES(10, 3.15)")
-DBI.execute!(db, "INSERT INTO S VALUES(10, 3.16)")
+DBInterface.execute!(db, "CREATE TABLE S (id INT, floats REAL)")
+DBInterface.execute!(db, "INSERT INTO S VALUES(10, 3.14)")
+DBInterface.execute!(db, "INSERT INTO S VALUES(10, 3.15)")
+DBInterface.execute!(db, "INSERT INTO S VALUES(10, 3.16)")
 
 struct AB
     a::Int
