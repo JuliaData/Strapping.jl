@@ -1,4 +1,4 @@
-using Test, StructTypes, SQLite, DBInterface, ORM
+using Test, StructTypes, SQLite, DBInterface, Strapping
 
 db = SQLite.DB()
 
@@ -17,7 +17,8 @@ struct AB
 end
 StructTypes.StructType(::Type{AB}) = StructTypes.Struct()
 
-@test ORM.select(db, "select * from T", AB) == AB(10, 3.14)
+@test Strapping.select(db, "select * from T", AB) == AB(10, 3.14)
+@test Strapping.select(db, "select * from T", Vector{AB}) == [AB(10, 3.14)]
 
 mutable struct ABM
     a::Int
@@ -28,15 +29,21 @@ end
 Base.:(==)(a::ABM, b::ABM) = a.a == b.a && a.b == b.b
 StructTypes.StructType(::Type{ABM}) = StructTypes.Mutable()
 
-@test ORM.select(db, "select * from T", ABM) == ABM(10, 3.14)
+@test Strapping.select(db, "select * from T", ABM) == ABM(10, 3.14)
+@test Strapping.select(db, "select * from T", Vector{ABM}) == [ABM(10, 3.14)]
 
-@test ORM.select(db, "select * from T", NamedTuple) == (a=10, b=3.14)
-@test ORM.select(db, "select * from T", Dict) == Dict("a" => 10, "b" => 3.14)
-@test ORM.select(db, "select * from T", Array) == [10, 3.14]
-@test ORM.select(db, "select * from T", Set) == Set([10, 3.14])
-@test ORM.select(db, "select * from T", Tuple) == (10, 3.14)
-@test ORM.select(db, "select * from T", Tuple{Int, Float64}) == (10, 3.14)
-@test ORM.select(db, "select * from T", Vector{Any}) == [Dict("a" => 10, "b" => 3.14)]
+@test Strapping.select(db, "select * from T", NamedTuple) == (a=10, b=3.14)
+@test Strapping.select(db, "select * from T", NamedTuple{(:a, :b), Tuple{Int, Float64}}) == (a=10, b=3.14)
+@test Strapping.select(db, "select * from T", NamedTuple{(:a, :b)}) == (a=10, b=3.14)
+@test Strapping.select(db, "select * from T", Dict) == Dict("a" => 10, "b" => 3.14)
+@test Strapping.select(db, "select * from T", Dict{String, Float64}) == Dict("a" => 10.0, "b" => 3.14)
+@test Strapping.select(db, "select * from T", Dict{Symbol, Any}) == Dict(:a => 10, :b => 3.14)
+@test Strapping.select(db, "select * from T", Array) == [10, 3.14]
+@test Strapping.select(db, "select * from T", Vector{Float64}) == [10.0] # because Float64 is scalar, only 1st field of result is used, other fields are ignored
+@test Strapping.select(db, "select * from T", Set) == Set([10, 3.14])
+@test Strapping.select(db, "select * from T", Tuple) == (10, 3.14)
+@test Strapping.select(db, "select * from T", Tuple{Int, Float64}) == (10, 3.14)
+@test Strapping.select(db, "select * from T", Vector{Any}) == [Dict("a" => 10, "b" => 3.14)]
 
 struct AB2
     id::Int
@@ -47,7 +54,8 @@ Base.:(==)(a::AB2, b::AB2) = a.id == b.id && a.floats == b.floats
 StructTypes.StructType(::Type{AB2}) = StructTypes.Struct()
 StructTypes.idproperty(::Type{AB2}) = :id
 
-@test ORM.select(db, "select * from S", AB2) == AB2(10, [3.14, 3.15, 3.16])
+@test Strapping.select(db, "select * from S", AB2) == AB2(10, [3.14, 3.15, 3.16])
+@test Strapping.select(db, "select * from S", Vector{AB2}) == [AB2(10, [3.14, 3.15, 3.16])]
 
 struct AB3
     a::Int
@@ -57,7 +65,8 @@ end
 StructTypes.StructType(::Type{AB3}) = StructTypes.Struct()
 StructTypes.fieldprefix(::Type{AB}) = :ab_
 
-@test ORM.select(db, "select a, a as ab_a, b as ab_b from T", AB3) == AB3(10, AB(10, 3.14))
+@test Strapping.select(db, "select a, a as ab_a, b as ab_b from T", AB3) == AB3(10, AB(10, 3.14))
+@test Strapping.select(db, "select a, a as ab_a, b as ab_b from T", Vector{AB3}) == [AB3(10, AB(10, 3.14))]
 
 mutable struct AB4
     a::Int
@@ -71,4 +80,5 @@ Base.:(==)(a::AB4, b::AB4) = a.a == b.a && a.b == b.b && a.abs == b.abs
 StructTypes.StructType(::Type{AB4}) = StructTypes.Mutable()
 StructTypes.idproperty(::Type{AB4}) = :a
 
-@test ORM.select(db, "select a.*, b.id as ab_a, b.floats as ab_b from T as a, S as b", AB4) == AB4(10, 3.14, AB[AB(10, 3.14), AB(10, 3.15), AB(10, 3.16)])
+@test Strapping.select(db, "select a.*, b.id as ab_a, b.floats as ab_b from T as a, S as b", AB4) == AB4(10, 3.14, AB[AB(10, 3.14), AB(10, 3.15), AB(10, 3.16)])
+@test Strapping.select(db, "select a.*, b.id as ab_a, b.floats as ab_b from T as a, S as b", Vector{AB4}) == [AB4(10, 3.14, AB[AB(10, 3.14), AB(10, 3.15), AB(10, 3.16)])]

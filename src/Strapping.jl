@@ -1,8 +1,8 @@
-module ORM
+module Strapping
 
 using DBInterface, StructTypes
 
-struct ORMException
+struct Error <: Exception
     msg::String
 end
 
@@ -11,7 +11,7 @@ select(conn::DBInterface.Connection, sql::AbstractString, ::Type{T}, args...; kw
 function select(stmt::DBInterface.Statement, ::Type{T}, args...; kw...) where {T}
     results = DBInterface.execute!(stmt, args...; kw...)
     state = iterate(results)
-    state === nothing && throw(ORMException("can't select `$T` from empty resultset"))
+    state === nothing && throw(Error("can't select `$T` from empty resultset"))
     row, st = state
     x, state = select(results, st, row, T; kw...)
     state === nothing || println("warning: additional result rows in query after reading `$T`")
@@ -91,7 +91,10 @@ select(::StructTypes.DictType, row, ::Type{Dict}; kw...) = select(StructTypes.Di
 select(::StructTypes.DictType, row, ::Type{T}; kw...) where {T <: AbstractDict} = select(StructTypes.DictType(), row, T, keytype(T), valtype(T); kw...)
 
 function select(::StructTypes.DictType, row, ::Type{T}, ::Type{K}, ::Type{V}; kw...) where {T, K, V}
-    #TODO: disallow aggregate types as V?
+    #TODO: formally disallow aggregate types as V?
+    # the problem is we're already treating the DictType as the aggregate, so
+    # it's impossible to distinguish between multiple aggregate type V
+    # from a single resultset set of fields
     x = Dict{K, V}()
     for (i, nm) in enumerate(propertynames(row))
         val = select(StructTypes.StructType(V), row, i, nm, V; kw...)
@@ -118,7 +121,7 @@ select(::StructTypes.ArrayType, row, ::Type{T}, ::Type{eT}; kw...) where {T, eT}
 select(::StructTypes.ArrayType, row, ::Type{Tuple}, ::Type{eT}; kw...) where {eT} = selectarray(row, Tuple, eT; kw...)
 
 function selectarray(row, ::Type{T}, ::Type{eT}; kw...) where {T, eT}
-    #TODO: disallow aggregate eT?
+    #TODO: disallow aggregate eT? same problem as DictType; we're treating the ArrayType as our aggregate
     nms = propertynames(row)
     N = length(nms)
     x = Vector{eT}(undef, N)
@@ -144,6 +147,7 @@ function select(::StructTypes.ArrayType, row, ::Type{T}, ::Type{eT}; kw...) wher
 end
 
 # selecting a single scalar from a row
+# for example, you want the result to be a single Int from: SELECT COUNT(*) FROM table
 function select(::StructTypes.StringType, row, ::Type{T}; kw...) where {T}
     return StructTypes.construct(T, row[1])
 end
@@ -160,7 +164,7 @@ function select(::StructTypes.NullType, row, ::Type{T}; kw...) where {T}
     return StructTypes.construct(T, row[1])
 end
 
-## field selection
+## field selection: here we have a specific col::Int/nm::Symbol argument for a parent aggregate
 # Struct field
 function select(::StructTypes.Struct, row, col, nm, ::Type{T}; kw...) where {T}
     prefix = StructTypes.fieldprefix(T)
