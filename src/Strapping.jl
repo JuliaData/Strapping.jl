@@ -10,7 +10,7 @@ end
     Strapping.construct(T, tbl)
     Strapping.construct(Vector{T}, tbl)
 
-Given a [Tables.jl](https://github.com/JuliaData/Tables.jl)-compatible input table source,
+Given a [Tables.jl](https://github.com/JuliaData/Tables.jl)-compatible input table source `tbl`,
 construct an instance of `T` (single object, first method), or `Vector{T}` (list of objects, 2nd method).
 
 The 1st method will throw an error if the input table is empty, and warn if there are more rows
@@ -74,8 +74,19 @@ StructTypes.StructType(::Type{Experiment}) = StructTypes.Struct()
 StructTypes.idproperty(::Type{Experiment}) = :id
 ```
 
-So my `Experiment` type also as an `id` field, in addition to a `name` field, and an "aggregate" field of `testresults`. How should the input table source account for `testresults`, which is itself a struct made up of its own `id` and `values` fields? The key here is "flattening" nested structs into a single set of table column names, and utilizing the 
+So my `Experiment` type also as an `id` field, in addition to a `name` field, and an "aggregate" field of `testresults`. How should the input table source account for `testresults`, which is itself a struct made up of its own `id` and `values` fields? The key here is "flattening" nested structs into a single set of table column names, and utilizing the `StructTypes.fieldprefix` function, which allows specifying a `Symbol` prefix to identify an aggregate field's columns in the table row. So, in the case of our `Experiment`, we can do:
 
+```julia
+StructTypes.fieldprefix(::Type{Experiment}, nm::Symbol) = nm == :testresults ? :testresults_ : :_
+```
+
+Note that this is the default definition, so we don't really need to define this, but for illustration purposes, we'll walk through it. We're saying that for the `:testresults` field name, we should expect its column names in the table row to start with `:testresults_`. So the table data for an `Experiment` instance, would look something like:
+
+```julia
+tbl = (id=[1, 1, 1], name=["exp1", "exp1", "exp1"], testresults_id=[1, 1, 1], testresults_values=[3.14, 3.15, 3.16])
+```
+
+This pattern generalizes to structs with multiple aggregate fields, or aggregate fields that themselves have aggregate fields (nested aggregates); in the nested case, the prefixes are concatenated, like `testresults_specifictestresult_id`.
 """
 function construct end
 
@@ -319,6 +330,16 @@ construct(::StructTypes.BoolType, PT, row, col, coloffset, prefix, nm, ::Type{T}
 construct(::StructTypes.NullType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T} = StructTypes.construct(T, getvalue(row, T, col, Symbol(prefix, nm)))
 
 # deconstruct
+
+"""
+    Strapping.deconstruct(x::T)
+    Strapping.deconstruct(x::Vector{T})
+
+The inverse of `Strapping.construct`, where an object instance `x::T` or `Vector` of objects `x::Vector{T}` is "deconstructed" into a Tables.jl-compatible row iterator. This works following the same patterns outlined in `Strapping.construct` with regards to `ArrayType` and aggregate fields. Specifically, `ArrayType` fields will cause multiple rows to be outputted, one row per collection element, with other scalar fields being repeated in each row. Similarly for aggregate fields, the field prefix will be used (`StructTypes.fieldprefix`) and nested aggregates will all be flattened into a single list of column names with aggregate prefixes.
+
+In general, this allows outputting any "object" as a 2D table structure that could be stored in any Tables.jl-compatible sink format, e.g. csv file, sqlite table, mysql database table, feather file, etc.
+"""
+function deconstruct end
 
 # single object or vector => Tables.rows iterator
 struct DeconstructedRowsIterator{T}
