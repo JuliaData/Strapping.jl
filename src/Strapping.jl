@@ -6,6 +6,79 @@ struct Error <: Exception
     msg::String
 end
 
+"""
+    Strapping.construct(T, tbl)
+    Strapping.construct(Vector{T}, tbl)
+
+Given a [Tables.jl](https://github.com/JuliaData/Tables.jl)-compatible input table source,
+construct an instance of `T` (single object, first method), or `Vector{T}` (list of objects, 2nd method).
+
+The 1st method will throw an error if the input table is empty, and warn if there are more rows
+than necessary to construct a single `T`.
+
+The 2nd method will return an empty list for an empty input source, and construct as many `T` as are
+found until the input table is exhausted.
+
+`Strapping.construct` utilizes the [StructTypes.jl](https://github.com/JuliaData/StructTypes.jl) package
+for determining the `StructTypes.StructType` trait of `T` and constructing an instance appropriately:
+    * `StructTypes.Struct`/`StructTypes.Mutable`: field reflection will be used to retrieve values from the input table row, with field customizations respected, like excluded fields, field-specific keyword args, etc.
+    * `StructTypes.DictType`: each column name/value of the table row will be used as a key/value pair to be passed to the `DictType` constructor
+    * `StructTypes.ArrayType`: column values will be "collected" as an array to be passed to the `ArrayType` constructor
+    * `StructTypes.StringType`/`StructTypes.NumberType`/`StructTypes.BoolType`/`StructTypes.NullType`: only the first value of the row will be passed to the scalar type constructor
+
+Note that for `StructTypes.DictType` and `StructTypes.ArrayType`, "aggregate" value/eltypes are not allowed, since
+the entire row is treated as key/value pairs or array elements. That means, for example, I can't have a table with rows like `tbl = [(a=1, b=2)]` and try to do `Strapping.construct(Dict{Symbol, Dict{Int, Int}}, tbl)`. It first attempts to map column names to the outer `Dict` keys, (`a` and `b`), but then tries to map the values `1` and `2`
+to `Dict{Int, Int}` and fails.
+
+For structs with `ArrayType` fields, the first row values will be used for other scalar fields, and subsequent rows
+will be iterated for the `ArrayType` field values. For example, I may wish to construct a type like:
+```julia
+struct TestResult
+    id::Int
+    values::Vector{Float64}
+end
+StructTypes.StructType(::Type{TestResult}) = StructTypes.Struct()
+StructTypes.idproperty(::Type{TestResult}) = :id
+```
+
+and my input table would look something like, `tbl = (id=[1, 1, 1], values=[3.14, 3.15, 3.16])`. I can then construct my type like:
+
+```julia
+julia> Strapping.construct(TestResult, tbl)
+TestResult(1, [3.14, 3.15, 3.16])
+```
+
+Note that along with defining the `StructTypes.StructType` trait for `TestResult`, I also needed to define `StructTypes.idproperty` to signal which field of my struct is a "unique key" identifier. This enables Strapping to distinguish which rows belong to a particular instance of `TestResult`. This allows the slightly more complicated example of returning multiple `TestResult`s from a single table:
+
+```julia
+julia> tbl = (id=[1, 1, 1, 2, 2, 2], values=[3.14, 3.15, 3.16, 40.1, 0.01, 2.34])
+(id = [1, 1, 1, 2, 2, 2], values = [3.14, 3.15, 3.16, 40.1, 0.01, 2.34])
+
+julia> Strapping.construct(Vector{TestResult}, tbl)
+2-element Array{TestResult,1}:
+ TestResult(1, [3.14, 3.15, 3.16])
+ TestResult(2, [40.1, 0.01, 2.34])
+```
+
+Here, we actually have _two_ `TestResult` objects in our `tbl`, and Strapping uses the `id` field to identify object owners for a row. Note that currently the table rows need to be sorted on the `idproperty` field, i.e. rows belonging to the same object must appear consecutively in the input table rows.
+
+Now let's discuss "aggregate" type fields. Let's say I have a struct like:
+
+```julia
+struct Experiment
+    id::Int
+    name::String
+    testresults::TestResult
+end
+StructTypes.StructType(::Type{Experiment}) = StructTypes.Struct()
+StructTypes.idproperty(::Type{Experiment}) = :id
+```
+
+So my `Experiment` type also as an `id` field, in addition to a `name` field, and an "aggregate" field of `testresults`. How should the input table source account for `testresults`, which is itself a struct made up of its own `id` and `values` fields? The key here is "flattening" nested structs into a single set of table column names, and utilizing the 
+
+"""
+function construct end
+
 function construct(::Type{T}, source; silencewarnings::Bool=false, kw...) where {T}
     rows = Tables.rows(source)
     state = iterate(rows)
@@ -169,7 +242,7 @@ end
 ## field construction: here we have a specific col::Int/nm::Symbol argument for a parent aggregate
 # Struct field
 function construct(::StructTypes.Struct, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T}
-    prefix = Symbol(prefix, get(StructTypes.fieldprefixes(PT), nm, Symbol()))
+    prefix = Symbol(prefix, StructTypes.fieldprefix(PT, nm))
     off = 0
     x = StructTypes.construct(T) do i, nm, TT
         off += 1
@@ -189,7 +262,7 @@ function construct!(::Union{StructTypes.Struct, StructTypes.Mutable}, PT, row, c
 end
 
 function construct(::StructTypes.Mutable, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T}
-    prefix = Symbol(prefix, get(StructTypes.fieldprefixes(PT), nm, Symbol()))
+    prefix = Symbol(prefix, StructTypes.fieldprefix(PT, nm))
     off = 0
     x = T()
     StructTypes.mapfields!(x) do i, nm, TT
@@ -201,7 +274,7 @@ function construct(::StructTypes.Mutable, PT, row, col, coloffset, prefix, nm, :
 end
 
 function construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T}
-    prefix = String(Symbol(prefix, get(StructTypes.fieldprefixes(PT), nm, Symbol())))
+    prefix = String(Symbol(prefix, StructTypes.fieldprefix(PT, nm)))
     off = 0
     x = Dict{K, V}()
     for (i, nm) in enumerate(Tables.columnnames(row))
@@ -377,7 +450,7 @@ function nametypeindex!(::Union{StructTypes.Struct, StructTypes.Mutable}, x::T, 
     c2.types = c.types
     c2.fieldindices = c.fieldindices
     c2.parentindex = i
-    c2.prefix = Symbol(c.prefix, get(StructTypes.fieldprefixes(c.parenttype), nm, Symbol()))
+    c2.prefix = Symbol(c.prefix, StructTypes.fieldprefix(c.parenttype, nm))
     StructTypes.foreachfield(c2, x)
     return
 end
