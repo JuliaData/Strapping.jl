@@ -121,3 +121,22 @@ ab6 = AB6(1, [3.14, 3.15, 3.16], AB(2, 0.01), [AB(10, 1.1), AB(11, 2.2), AB(12, 
 @test Strapping.construct(AB6, tbl6) == ab6
 @test Strapping.construct(Vector{AB6}, tbl6) == [ab6]
 @test columntable(Strapping.deconstruct(ab6)) == tbl6
+
+# https://github.com/JuliaData/Strapping.jl/issues/3
+struct TestStruct
+    a::Float64
+    b::Float64
+    id::Int
+end
+
+function TestStruct(a,b,id)
+    TestStruct(a,b,id)
+end
+
+StructTypes.StructType(::Type{TestStruct}) = StructTypes.Struct()
+StructTypes.idproperty(::Type{TestStruct}) = :id
+
+data = [ TestStruct(rand(2)..., n) for n = 1:5]
+
+tbl = Strapping.deconstruct(data)
+@test length(Tables.columntable(tbl)[1]) == 5
