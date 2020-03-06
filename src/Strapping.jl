@@ -406,6 +406,9 @@ function deconstruct(values::Vector{T}) where {T}
     x = values[1]
     StructTypes.foreachfield(c, x)
     len = c.len
+    names = copy(c.names)
+    types = copy(c.types)
+    fieldindices = copy(c.fieldindices)
     lens = [len]
     for i = 2:length(values)
         c.len = 1
@@ -413,9 +416,8 @@ function deconstruct(values::Vector{T}) where {T}
         len += c.len
         push!(lens, c.len)
     end
-    names = c.names
     lookup = Dict(nm => i for (i, nm) in enumerate(names))
-    return DeconstructedRowsIterator(values, lens, len, names, c.types, c.fieldindices, lookup)
+    return DeconstructedRowsIterator(values, lens, len, names, types, fieldindices, lookup)
 end
 
 Base.eltype(x::DeconstructedRowsIterator{T}) where {T} = DeconstructedRow{T}
