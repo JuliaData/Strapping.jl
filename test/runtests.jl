@@ -129,10 +129,6 @@ struct TestStruct
     id::Int
 end
 
-function TestStruct(a,b,id)
-    TestStruct(a,b,id)
-end
-
 StructTypes.StructType(::Type{TestStruct}) = StructTypes.Struct()
 StructTypes.idproperty(::Type{TestStruct}) = :id
 
