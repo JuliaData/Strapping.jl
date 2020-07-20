@@ -284,7 +284,12 @@ function construct(::StructTypes.Mutable, PT, row, col, coloffset, prefix, nm, :
     return x
 end
 
-function construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T}
+construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T} = construct(StructTypes.DictType(), PT, row, col, coloffset, prefix, nm, T, Symbol, Any; kw...)
+construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), PT, row, col, coloffset, prefix, nm, T, Symbol, Any; kw...)
+construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{Dict}; kw...) = construct(StructTypes.DictType(), PT, row, col, coloffset, prefix, nm, Dict, String, Any; kw...)
+construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T <: AbstractDict} = construct(StructTypes.DictType(), PT, row, col, coloffset, prefix, nm, T, keytype(T), valtype(T); kw...)
+
+function construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}, ::Type{K}, ::Type{V}; kw...) where {T, K, V}
     prefix = String(Symbol(prefix, StructTypes.fieldprefix(PT, nm)))
     off = 0
     x = Dict{K, V}()
@@ -370,7 +375,7 @@ names(x::DeconstructedRow) = getfield(x, :names)
 inds(x::DeconstructedRow) = getfield(x, :fieldindices)
 lookup(x::DeconstructedRow) = getfield(x, :lookup)
 
-Tables.columnnames(row::DeconstructedRow) = names(x)
+Tables.columnnames(row::DeconstructedRow) = names(row)
 Tables.getcolumn(row::DeconstructedRow, ::Type{T}, i::Int, nm::Symbol) where {T} =
     getfieldvalue(obj(row), ind(row), inds(row)[i])
 Tables.getcolumn(row::DeconstructedRow, i::Int) =
@@ -438,10 +443,6 @@ end
 
 valuelength(ST, x) = 1
 valuelength(::StructTypes.ArrayType, x) = length(x)
-
-indexedvalue(x::T, i) where {T} = indexedvalue(StructTypes.StructType(T), x, i)
-indexedvalue(ST, x, i) = x
-indexedvalue(::StructTypes.ArrayType, x, i) = x[i]
 
 getfieldvalue(x::T, ind, (i, j)) where {T} = getfieldvalue(StructTypes.StructType(T), x, ind, (i, j))
 getfieldvalue(ST, x, ind, (i, j)) = x
