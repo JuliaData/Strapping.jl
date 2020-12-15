@@ -1,7 +1,10 @@
 ### Strapping.jl
 
-[![Build Status](https://travis-ci.org/JuliaData/Strapping.jl.svg?branch=master)](https://travis-ci.org/JuliaData/Strapping.jl)
-[![Codecov](https://codecov.io/gh/JuliaData/Strapping.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaData/Strapping.jl)
+[![CI](https://github.com/JuliaData/Strapping.jl/workflows/CI/badge.svg)](https://github.com/JuliaData/Strapping.jl/actions?query=workflow%3ACI)
+[![codecov](https://codecov.io/gh/JuliaData/Strapping.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaData/Strapping.jl)
+[![deps](https://juliahub.com/docs/Strapping/deps.svg)](https://juliahub.com/ui/Packages/Strapping/n0fkj?t=2)
+[![version](https://juliahub.com/docs/Strapping/version.svg)](https://juliahub.com/ui/Packages/Strapping/n0fkj)
+[![pkgeval](https://juliahub.com/docs/Strapping/pkgeval.svg)](https://juliahub.com/ui/Packages/Strapping/n0fkj)
 
 "Strapping" stands for **ST**ruct **R**elational M**APPING**, and provides ORM-like functionality for Julia, including:
 
