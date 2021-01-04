@@ -21,10 +21,10 @@ found until the input table is exhausted.
 
 `Strapping.construct` utilizes the [StructTypes.jl](https://github.com/JuliaData/StructTypes.jl) package
 for determining the `StructTypes.StructType` trait of `T` and constructing an instance appropriately:
-    * `StructTypes.Struct`/`StructTypes.Mutable`: field reflection will be used to retrieve values from the input table row, with field customizations respected, like excluded fields, field-specific keyword args, etc.
-    * `StructTypes.DictType`: each column name/value of the table row will be used as a key/value pair to be passed to the `DictType` constructor
-    * `StructTypes.ArrayType`: column values will be "collected" as an array to be passed to the `ArrayType` constructor
-    * `StructTypes.StringType`/`StructTypes.NumberType`/`StructTypes.BoolType`/`StructTypes.NullType`: only the first value of the row will be passed to the scalar type constructor
+  * `StructTypes.Struct`/`StructTypes.Mutable`: field reflection will be used to retrieve values from the input table row, with field customizations respected, like excluded fields, field-specific keyword args, etc.
+  * `StructTypes.DictType`: each column name/value of the table row will be used as a key/value pair to be passed to the `DictType` constructor
+  * `StructTypes.ArrayType`: column values will be "collected" as an array to be passed to the `ArrayType` constructor
+  * `StructTypes.StringType`/`StructTypes.NumberType`/`StructTypes.BoolType`/`StructTypes.NullType`: only the first value of the row will be passed to the scalar type constructor
 
 Note that for `StructTypes.DictType` and `StructTypes.ArrayType`, "aggregate" value/eltypes are not allowed, since
 the entire row is treated as key/value pairs or array elements. That means, for example, I can't have a table with rows like `tbl = [(a=1, b=2)]` and try to do `Strapping.construct(Dict{Symbol, Dict{Int, Int}}, tbl)`. It first attempts to map column names to the outer `Dict` keys, (`a` and `b`), but then tries to map the values `1` and `2`
