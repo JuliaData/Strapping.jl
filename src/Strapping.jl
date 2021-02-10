@@ -347,25 +347,28 @@ In general, this allows outputting any "object" as a 2D table structure that cou
 function deconstruct end
 
 # single object or vector => Tables.rows iterator
-struct DeconstructedRowsIterator{T}
-    values::Vector{T}
+struct DeconstructedRowsIterator{T, A}
+    values::A
     lens::Vector{Int}
     len::Int
     names::Vector{Symbol}
     types::Vector{Type}
     fieldindices::Vector{Tuple{Int, Int}}
+    fieldnames::Vector{Tuple{Symbol, Symbol}}
     lookup::Dict{Symbol, Int}
 end
 
 Tables.isrowtable(::Type{<:DeconstructedRowsIterator}) = true
 
-Tables.schema(x::DeconstructedRowsIterator) = Tables.Schema(x.names, x.types)
+# disabled because 
+# Tables.schema(x::DeconstructedRowsIterator) = Tables.Schema(x.names, x.types)
 
 struct DeconstructedRow{T} <: Tables.AbstractRow
     x::T # a single object we're deconstructing
     index::Int # index of this specific row (may be > 1 for objects w/ collection fields)
     names::Vector{Symbol}
     fieldindices::Vector{Tuple{Int, Int}}
+    fieldnames::Vector{Tuple{Symbol, Symbol}}
     lookup::Dict{Symbol, Int}
 end
 
@@ -373,13 +376,14 @@ obj(x::DeconstructedRow) = getfield(x, :x)
 ind(x::DeconstructedRow) = getfield(x, :index)
 names(x::DeconstructedRow) = getfield(x, :names)
 inds(x::DeconstructedRow) = getfield(x, :fieldindices)
+nms(x::DeconstructedRow) = getfield(x, :fieldnames)
 lookup(x::DeconstructedRow) = getfield(x, :lookup)
 
 Tables.columnnames(row::DeconstructedRow) = names(row)
 Tables.getcolumn(row::DeconstructedRow, ::Type{T}, i::Int, nm::Symbol) where {T} =
-    getfieldvalue(obj(row), ind(row), inds(row)[i])
+    getfieldvalue(obj(row), ind(row), inds(row)[i], nms(row)[i])
 Tables.getcolumn(row::DeconstructedRow, i::Int) =
-    getfieldvalue(obj(row), ind(row), inds(row)[i])
+    getfieldvalue(obj(row), ind(row), inds(row)[i], nms(row)[i])
 Tables.getcolumn(row::DeconstructedRow, nm::Symbol) = Tables.getcolumn(row, lookup(row)[nm])
 
 mutable struct DeconstructClosure{PT}
@@ -387,13 +391,16 @@ mutable struct DeconstructClosure{PT}
     names::Vector{Symbol}
     types::Vector{Type}
     fieldindices::Vector{Tuple{Int, Int}}
+    fieldnames::Vector{Tuple{Symbol, Symbol}}
     parentindex::Int
+    parentname::Symbol
     prefix::Symbol
     j::Int
+    nm::Symbol
     parenttype::Type{PT}
 end
 
-DeconstructClosure(PT) = DeconstructClosure(1, Symbol[], Type[], Tuple{Int, Int}[], 0, Symbol(), 1, PT)
+DeconstructClosure(PT) = DeconstructClosure(1, Symbol[], Type[], Tuple{Int, Int}[], Tuple{Symbol, Symbol}[], 0, Symbol(), Symbol(), 1, Symbol(), PT)
 
 function (f::DeconstructClosure)(i, nm, TT, v; kw...)
     len = valuelength(StructTypes.StructType(TT), v)
@@ -404,25 +411,53 @@ function (f::DeconstructClosure)(i, nm, TT, v; kw...)
     return
 end
 
+mutable struct DeconstructLenClosure
+    len::Int
+end
+
+function (f::DeconstructLenClosure)(i, nm, TT, v; kw...)
+    len = valuelength(StructTypes.StructType(TT), v)
+    if len > f.len
+        f.len = len
+    end
+    return
+end
+
+deconstructobj!(x::T, c) where {T} = deconstructobj!(StructTypes.StructType(T), x, c)
+deconstructobj!(ST, x, c) = StructTypes.foreachfield(c, x)
+
+function deconstructobj!(::StructTypes.DictType, x, c)
+    i = 1
+    for (k, v) in StructTypes.keyvaluepairs(x)
+        c(i, k, typeof(v), v)
+        i += 1
+    end
+    return
+end
+
 deconstruct(x) = deconstruct([x])
 
-function deconstruct(values::Vector{T}) where {T}
+function deconstruct(values::A) where {T, A <: AbstractVector{T}}
     c = DeconstructClosure(T)
-    x = values[1]
-    StructTypes.foreachfield(c, x)
-    len = c.len
-    names = copy(c.names)
-    types = copy(c.types)
-    fieldindices = copy(c.fieldindices)
-    lens = [len]
-    for i = 2:length(values)
-        c.len = 1
-        StructTypes.foreachfield(c, values[i])
-        len += c.len
-        push!(lens, c.len)
+    flens = DeconstructLenClosure(0)
+    lens = Int[]
+    len = 0
+    i = 0
+    for x in values
+        if i == 0
+            deconstructobj!(x, c)
+            push!(lens, c.len)
+            len += c.len
+        else
+            flens.len = 0
+            deconstructobj!(x, flens)
+            len += flens.len
+            push!(lens, flens.len)
+        end
+        i += 1
     end
-    lookup = Dict(nm => i for (i, nm) in enumerate(names))
-    return DeconstructedRowsIterator(values, lens, len, names, types, fieldindices, lookup)
+    lookup = Dict(nm => i for (i, nm) in enumerate(c.names))
+    return DeconstructedRowsIterator{T, A}(values, lens, len, c.names, c.types, c.fieldindices, c.fieldnames, lookup)
 end
 
 Base.eltype(x::DeconstructedRowsIterator{T}) where {T} = DeconstructedRow{T}
@@ -435,24 +470,28 @@ Base.length(x::DeconstructedRowsIterator) = x.len
 @inline function Base.iterate(x::DeconstructedRowsIterator, (i, j, k)=(1, 1, 1))
     k > x.len && return nothing
     if j == x.lens[i]
-        return DeconstructedRow(x.values[i], j, x.names, x.fieldindices, x.lookup), (i + 1, 1, k + 1)
+        return DeconstructedRow(x.values[i], j, x.names, x.fieldindices, x.fieldnames, x.lookup), (i + 1, 1, k + 1)
     else
-        return DeconstructedRow(x.values[i], j, x.names, x.fieldindices, x.lookup), (i, j + 1, k + 1)
+        return DeconstructedRow(x.values[i], j, x.names, x.fieldindices, x.fieldnames, x.lookup), (i, j + 1, k + 1)
     end
 end
 
 valuelength(ST, x) = 1
 valuelength(::StructTypes.ArrayType, x) = length(x)
 
-getfieldvalue(x::T, ind, (i, j)) where {T} = getfieldvalue(StructTypes.StructType(T), x, ind, (i, j))
-getfieldvalue(ST, x, ind, (i, j)) = x
-getfieldvalue(::StructTypes.ArrayType, x, ind, (i, j)) = getfieldvalue(x[ind], ind, (i, j))
-getfieldvalue(::Union{StructTypes.Struct, StructTypes.Mutable}, x, ind, (i, j)) = getsubfieldvalue(Core.getfield(x, i), ind, (i, j))
+getfieldvalue(x::T, ind, (i, j), (nm1, nm2)) where {T} = getfieldvalue(StructTypes.StructType(T), x, ind, (i, j), (nm1, nm2))
+getfieldvalue(ST, x, ind, (i, j), (nm1, nm2)) = x
+getfieldvalue(::StructTypes.ArrayType, x, ind, (i, j), (nm1, nm2)) = getfieldvalue(x[ind], ind, (i, j), (nm1, nm2))
+getfieldvalue(::Union{StructTypes.Struct, StructTypes.Mutable}, x, ind, (i, j), (nm1, nm2)) = getsubfieldvalue(Core.getfield(x, i), ind, (i, j), (nm1, nm2))
+getfieldvalue(::StructTypes.DictType, x, ind, (i, j), (nm1, nm2)) = getsubfieldvalue(x[nm1], ind, (i, j), (nm1, nm2))
 
-getsubfieldvalue(x::T, ind, (i, j)) where {T} = getsubfieldvalue(StructTypes.StructType(T), x, ind, (i, j))
-getsubfieldvalue(ST, x, ind, (i, j)) = x
-getsubfieldvalue(::StructTypes.ArrayType, x, ind, (i, j)) = getsubfieldvalue(x[ind], ind, (i, j))
-getsubfieldvalue(::Union{StructTypes.Struct, StructTypes.Mutable}, x, ind, (i, j)) = getsubfieldvalue(Core.getfield(x, j), ind, (i, j))
+getsubfieldvalue(x::T, ind, (i, j), (nm1, nm2)) where {T} = getsubfieldvalue(StructTypes.StructType(T), x, ind, (i, j), (nm1, nm2))
+getsubfieldvalue(ST, x, ind, (i, j), (nm1, nm2)) = x
+getsubfieldvalue(::StructTypes.ArrayType, x, ind, (i, j), (nm1, nm2)) = getsubfieldvalue(x[ind], ind, (i, j), (nm1, nm2))
+getsubfieldvalue(::Union{StructTypes.Struct, StructTypes.Mutable}, x, ind, (i, j), (nm1, nm2)) = getsubfieldvalue(Core.getfield(x, j), ind, (i, j), (nm1, nm2))
+function getsubfieldvalue(::StructTypes.DictType, x, ind, (i, j), (nm1, nm2))
+    getsubfieldvalue(x[nm2], ind, (i, j), (nm1, nm2))
+end
 
 rowtypeof(x::T) where {T} = rowtypeof(StructTypes.StructType(T), x)
 rowtypeof(::StructTypes.ArrayType, x) = eltype(x)
@@ -464,18 +503,21 @@ function nametypeindex!(ST, x, i, nm, c)
     push!(c.names, Symbol(c.prefix, nm))
     push!(c.types, rowtypeof(x))
     push!(c.fieldindices, (c.parentindex > 0 ? c.parentindex : i, c.j))
+    push!(c.fieldnames, (c.parentindex > 0 ? c.parentname : nm, nm))
     c.j += 1
     return
 end
 
-function nametypeindex!(::Union{StructTypes.Struct, StructTypes.Mutable}, x::T, i, nm, c) where {T}
+function nametypeindex!(::Union{StructTypes.Struct, StructTypes.Mutable, StructTypes.DictType}, x::T, i, nm, c) where {T}
     c2 = DeconstructClosure(T)
     c2.names = c.names
     c2.types = c.types
     c2.fieldindices = c.fieldindices
+    c2.fieldnames = c.fieldnames
     c2.parentindex = i
+    c2.parentname = nm
     c2.prefix = Symbol(c.prefix, StructTypes.fieldprefix(c.parenttype, nm))
-    StructTypes.foreachfield(c2, x)
+    deconstructobj!(x, c2)
     return
 end
 
