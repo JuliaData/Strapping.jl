@@ -136,3 +136,17 @@ data = [ TestStruct(rand(2)..., n) for n = 1:5]
 
 tbl = Strapping.deconstruct(data)
 @test length(Tables.columntable(tbl)[1]) == 5
+
+struct AA1
+    a::Int64
+    b::Dict{Symbol, Any}
+end
+
+StructTypes.StructType(::Type{AA1}) = StructTypes.Struct()
+
+data = [ AA1(1, Dict{Symbol, Any}(:aa => 2, :bb => 3)) ]
+tbl = Strapping.deconstruct(data)
+tbl2 = Tables.columntable(tbl)
+@test tbl2.a == [1]
+@test tbl2.b_aa == [2]
+@test tbl2.b_bb == [3]
