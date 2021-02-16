@@ -1,6 +1,7 @@
 module Strapping
 
 using Tables, StructTypes
+# using DebugPrinting
 
 struct Error <: Exception
     msg::String
@@ -95,7 +96,7 @@ function construct(::Type{T}, source; silencewarnings::Bool=false, kw...) where 
     state = iterate(rows)
     state === nothing && throw(Error("can't construct `$T` from empty source"))
     row, st = state
-    x, state = construct(rows, st, row, T; kw...)
+    x, state = construct(T, rows, row, st; kw...)
     state === nothing || (silencewarnings && println("warning: additional source rows left after reading `$T`"))
     return x
 end
@@ -106,16 +107,17 @@ function construct(::Type{Vector{T}}, source; kw...) where {T}
     A = Vector{T}(undef, 0)
     while state !== nothing
         row, st = state
-        x, state = construct(rows, st, row, T; kw...)
+        x, state = construct(T, rows, row, st; kw...)
         push!(A, x)
     end
     return A
 end
 
 # collection handler: will iterate results for collection fields
-function construct(rows, st, row, ::Type{T}; kw...) where {T}
-    x = construct(StructTypes.StructType(T), row, T; kw...)
+function construct(::Type{T}, rows, row, st; kw...) where {T}
+    x = construct(StructTypes.StructType(T), T, row; kw...)
     idprop = StructTypes.idproperty(T)
+    # @print 2 idprop
     if idprop !== :_
         id = Tables.getcolumn(row, idprop)
         state = iterate(rows, st)
@@ -123,7 +125,7 @@ function construct(rows, st, row, ::Type{T}; kw...) where {T}
             while state !== nothing
                 row, st = state
                 Tables.getcolumn(row, idprop) == id || break
-                construct!(StructTypes.StructType(T), row, x; kw...)
+                construct!(StructTypes.StructType(T), x, row; kw...)
                 state = iterate(rows, st)
             end
         end
@@ -133,58 +135,105 @@ function construct(rows, st, row, ::Type{T}; kw...) where {T}
     return x, state
 end
 
-# aggregate handlers (don't take specific `col`/`nm` arguments)
+# aggregate handlers
 # construct versions construct initial object
 # construct! versions take existing object and append additional elements to collection fields
-function construct(::StructTypes.Struct, row, ::Type{T}; kw...) where {T}
-    coloffset = Ref{Int}(0)
+function construct(::StructTypes.Struct, ::Type{T}, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
+    # @print 3 (T, prefix, offset)
     return StructTypes.construct(T) do i, nm, TT
-        construct(StructTypes.StructType(TT), T, row, i, coloffset, Symbol(), nm, TT; kw...)
+        x = construct(StructTypes.StructType(TT), TT, row, Symbol(prefix, StructTypes.fieldprefix(T, nm)), offset, offset[] + 1, Symbol(prefix, nm); kw...)
+        # @print 3 x
+        return x
     end
 end
 
-function construct!(::StructTypes.Struct, row, x::T; kw...) where {T}
-    coloffset = Ref{Int}(0)
+function construct(::ST, ::Type{T}, row, prefix, offset, i, nm; kw...) where {ST <: Union{StructTypes.Struct, StructTypes.Mutable}, T}
+    # @print 3 (T, prefix, offset, i, nm)
+    construct(ST(), T, row, prefix, offset; kw...)
+end
+
+function construct!(::Union{StructTypes.Struct, StructTypes.Mutable}, x::T, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
+    # @print 3 (T, prefix, offset)
     return StructTypes.foreachfield(x) do i, nm, TT, v
-        construct!(StructTypes.StructType(TT), T, row, i, coloffset, Symbol(), nm, TT, v; kw...)
+        y = construct!(StructTypes.StructType(TT), v, row, Symbol(prefix, StructTypes.fieldprefix(T, nm)), offset, offset[] + 1, Symbol(prefix, nm); kw...)
+        # @print 3 y
+        return y
     end
 end
 
-function construct(::StructTypes.Mutable, row, ::Type{T}; kw...) where {T}
+function construct!(::ST, x::T, row, prefix, offset, i, nm; kw...) where {ST <: Union{StructTypes.Struct, StructTypes.Mutable}, T}
+    # @print 3 (T, prefix, offset, i, nm)
+    construct!(ST(), x, row, prefix, offset; kw...)
+end
+
+function construct(::StructTypes.Mutable, ::Type{T}, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
+    # @print 3 (T, prefix, offset)
     x = T()
-    coloffset = Ref{Int}(0)
     StructTypes.mapfields!(x) do i, nm, TT
-        y = construct(StructTypes.StructType(TT), T, row, i, coloffset, Symbol(), nm, TT; kw...)
+        y = construct(StructTypes.StructType(TT), TT, row, Symbol(prefix, StructTypes.fieldprefix(T, nm)), offset, offset[] + 1, Symbol(prefix, nm); kw...)
+        # @print 3 y
         return y
     end
     return x
 end
 
-function construct!(::StructTypes.Mutable, row, x::T; kw...) where {T}
-    coloffset = Ref{Int}(0)
-    return StructTypes.foreachfield(x) do i, nm, TT, v
-        construct!(StructTypes.StructType(TT), T, row, i, coloffset, Symbol(), nm, TT, v; kw...)
-    end
+# fallback for scalars when called from "aggregate" method
+construct(ST, T, row, prefix=Symbol(), offset=Ref(0); kw...) = construct(ST, T, row, prefix, offset, 1, Tables.columnnames(row)[1]; kw...)
+construct!(ST, x, row, prefix=Symbol(), offset=Ref(0); kw...) = nothing
+function construct!(ST, x, row, prefix, offset, i, nm; kw...)
+    offset[] += 1
+    nothing
+end
+
+function construct(::StructTypes.NumberType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T}
+    offset[] += 1
+    StructTypes.construct(T, StructTypes.numbertype(T)(getvalue(row, T, i, nm)))
+end
+
+# fallback for scalars
+function construct(ST, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T}
+    offset[] += 1
+    StructTypes.construct(T, getvalue(row, T, i, nm))
+end
+
+function construct(::StructTypes.Struct, ::Type{Any}, row, prefix, offset, i, nm; kw...)
+    offset[] += 1
+    Tables.getcolumn(row, nm)
+end
+
+# scalar handlers (take a `col` argument)
+function getvalue(row, ::Type{T}, col::Int, nm::Symbol) where {T}
+    # @print 3 (T, col, nm)
+    Tables.getcolumn(row, T, col, nm)
+end
+function getvalue(row, ::Type{T}, col::Int, nm::Int) where {T}
+    # @print 3 (T, col, nm)
+    Tables.getcolumn(row, nm)
 end
 
 # default aggregate
-construct(::StructTypes.Struct, row, ::Type{Any}; kw...) =
-    construct(StructTypes.DictType(), row, Dict{String, Any}; kw...)
+construct(::StructTypes.Struct, ::Type{Any}, row, prefix=Symbol(), offset=Ref(0); kw...) =
+    construct(StructTypes.DictType(), Dict{String, Any}, row; kw...)
 
-construct(::StructTypes.DictType, row, ::Type{T}; kw...) where {T} = construct(StructTypes.DictType(), row, T, Symbol, Any; kw...)
-construct(::StructTypes.DictType, row, ::Type{T}; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), row, T, Symbol, Any; kw...)
-construct(::StructTypes.DictType, row, ::Type{Dict}; kw...) = construct(StructTypes.DictType(), row, Dict, String, Any; kw...)
-construct(::StructTypes.DictType, row, ::Type{T}; kw...) where {T <: AbstractDict} = construct(StructTypes.DictType(), row, T, keytype(T), valtype(T); kw...)
+# note these don't take `prefix`/`offset` args because we don't expect them to ever be called with a prefix/offset (i.e. only called from line 117)
+construct(::StructTypes.DictType, ::Type{T}, row; kw...) where {T} = construct(StructTypes.DictType(), T, row, Symbol, Any; kw...)
+construct(::StructTypes.DictType, ::Type{T}, row; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), T, row, Symbol, Any; kw...)
+construct(::StructTypes.DictType, ::Type{Dict}, row; kw...) = construct(StructTypes.DictType(), Dict, row, String, Any; kw...)
+construct(::StructTypes.DictType, ::Type{T}, row; kw...) where {T <: AbstractDict} = construct(StructTypes.DictType(), T, row, keytype(T), valtype(T); kw...)
 
-function construct(::StructTypes.DictType, row, ::Type{T}, ::Type{K}, ::Type{V}; kw...) where {T, K, V}
-    #TODO: formally disallow aggregate types as V?
+const AggregateStructTypes = Union{StructTypes.Struct, StructTypes.Mutable, StructTypes.DictType, StructTypes.ArrayType}
+@noinline aggregatefieldserror(T) = error("$(StructTypes.StructType(T)) $T not allowed as aggregate field when calling Strapping.construct")
+
+function construct(::StructTypes.DictType, ::Type{T}, row, ::Type{K}, ::Type{V}; kw...) where {T, K, V}
+    # check for aggregate types as V
     # the problem is we're already treating the DictType as the aggregate, so
-    # it's impossible to distinguish between multiple aggregate type V
-    # from a single resultset set of fields
+    # it "slurps" all columns as Dict keys, making it
+    # impossible to distinguish between multiple aggregate type V
+    (V === Any || !(StructTypes.StructType(V) isa AggregateStructTypes)) || aggregatefieldserror(T)
     x = Dict{K, V}()
     for (i, nm) in enumerate(Tables.columnnames(row))
-        val = construct(StructTypes.StructType(V), T, row, i, Ref{Int}(0), Symbol(), nm, V; kw...)
-        if K == Symbol
+        val = construct(StructTypes.StructType(V), V, row, Symbol(), Ref(0), i, nm; kw...)
+        if K === Symbol
             x[nm] = val
         else
             x[StructTypes.construct(K, String(nm))] = val
@@ -193,146 +242,59 @@ function construct(::StructTypes.DictType, row, ::Type{T}, ::Type{K}, ::Type{V};
     return StructTypes.construct(T, x; kw...)
 end
 
-function construct!(::StructTypes.DictType, row, x::T; kw...) where {T}
+@noinline construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T} = aggregatefieldserror(T)
+
+function construct!(::StructTypes.DictType, x::T, row; kw...) where {T}
     for (i, nm) in enumerate(Tables.columnnames(row))
         v = x[nm]
         V = typeof(v)
-        construct!(StructTypes.StructType(V), T, row, i, Ref{Int}(0), Symbol(), nm, V, v; kw...)
+        construct!(StructTypes.StructType(V), v, row, Symbol(), Ref(0), i, nm; kw...)
     end
     return
 end
 
-construct(::StructTypes.ArrayType, row, ::Type{T}; kw...) where {T} = construct(StructTypes.ArrayType(), row, T, Base.IteratorEltype(T) == Base.HasEltype() ? eltype(T) : Any; kw...)
-construct(::StructTypes.ArrayType, row, ::Type{T}, ::Type{eT}; kw...) where {T, eT} = constructarray(row, T, eT; kw...)
-construct(::StructTypes.ArrayType, row, ::Type{Tuple}, ::Type{eT}; kw...) where {eT} = constructarray(row, Tuple, eT; kw...)
+construct(::StructTypes.ArrayType, ::Type{T}, row; kw...) where {T} =
+    _construct(StructTypes.ArrayType(), T, row, Base.IteratorEltype(T) == Base.HasEltype() ? eltype(T) : Any; kw...)
+construct(::StructTypes.ArrayType, ::Type{Tuple}, row; kw...) =
+    _construct(StructTypes.ArrayType(), Tuple, row, Any; kw...)
 
-function constructarray(row, ::Type{T}, ::Type{eT}; kw...) where {T, eT}
-    #TODO: disallow aggregate eT? same problem as DictType; we're treating the ArrayType as our aggregate
+function _construct(::StructTypes.ArrayType, ::Type{T}, row, ::Type{eT}; kw...) where {T, eT}
+    # disallow aggregate eT, same problem as DictType; we're treating the ArrayType as our aggregate
+    (eT === Any || !(StructTypes.StructType(eT) isa AggregateStructTypes)) || aggregatefieldserror(T)
     nms = Tables.columnnames(row)
     N = length(nms)
     x = Vector{eT}(undef, N)
     for (i, nm) in enumerate(nms)
-        x[i] = construct(StructTypes.StructType(eT), T, row, i, Ref{Int}(0), Symbol(), nm, eT; kw...)
+        x[i] = construct(StructTypes.StructType(eT), eT, row, Symbol(), Ref(0), i, nm; kw...)
     end
     return StructTypes.construct(T, x; kw...)
 end
 
-function construct!(::StructTypes.ArrayType, row, x::T; kw...) where {T}
+function construct!(::StructTypes.ArrayType, x::T, row; kw...) where {T}
     for (i, nm) in enumerate(Tables.columnnames(row))
         v = x[i]
         V = typeof(v)
-        construct!(StructTypes.StructType(V), T, row, i, Ref{Int}(0), Symbol(), nm, V, v; kw...)
+        construct!(StructTypes.StructType(V), v, row, Symbol(), Ref(0), i, nm; kw...)
     end
     return
 end
 
-function construct(::StructTypes.ArrayType, row, ::Type{T}, ::Type{eT}; kw...) where {T <: Tuple, eT}
+function construct(::StructTypes.ArrayType, ::Type{T}, row, ::Type{eT}; kw...) where {T <: Tuple, eT}
     return StructTypes.construct(T) do i, nm, TT
-        construct(StructTypes.StructType(TT), T, row, i, Ref{Int}(0), Symbol(), nm, TT; kw...)
+        construct(StructTypes.StructType(TT), TT, row, Symbol(), Ref(0); kw...)
     end
 end
 
-# constructing a single scalar from a row
-# for example, you want the result to be a single Int from: SELECT COUNT(*) FROM table
-function construct(::StructTypes.StringType, row, ::Type{T}; kw...) where {T}
-    return StructTypes.construct(T, Tables.getcolumn(row, 1))
+function construct(::StructTypes.ArrayType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T}
+    eT = Base.IteratorEltype(T) == Base.HasEltype() ? eltype(T) : Any
+    return StructTypes.construct(T, [construct(StructTypes.StructType(eT), eT, row, prefix, offset, i, nm; kw...)]; kw...)
 end
 
-function construct(::StructTypes.NumberType, row, ::Type{T}; kw...) where {T}
-    return StructTypes.construct(T, StructTypes.numbertype(T)(Tables.getcolumn(row, 1)))
-end
-
-function construct(::StructTypes.BoolType, row, ::Type{T}; kw...) where {T}
-    return StructTypes.construct(T, Tables.getcolumn(row, 1))
-end
-
-function construct(::StructTypes.NullType, row, ::Type{T}; kw...) where {T}
-    return StructTypes.construct(T, Tables.getcolumn(row, 1))
-end
-
-## field construction: here we have a specific col::Int/nm::Symbol argument for a parent aggregate
-# Struct field
-function construct(::StructTypes.Struct, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T}
-    prefix = Symbol(prefix, StructTypes.fieldprefix(PT, nm))
-    off = 0
-    x = StructTypes.construct(T) do i, nm, TT
-        off += 1
-        construct(StructTypes.StructType(TT), T, row, coloffset[] + col + i - 1, coloffset, prefix, nm, TT; kw...)
-    end
-    coloffset[] += off - 1
-    return x
-end
-
-function construct!(::Union{StructTypes.Struct, StructTypes.Mutable}, PT, row, col, coloffset, prefix, nm, ::Type{T}, v; kw...) where {T}
-    off = 0
-    StructTypes.foreachfield(v) do i, nm, TT, v
-        off += 1
-    end
-    coloffset[] += off - 1
+function construct!(::StructTypes.ArrayType, x::T, row, prefix, offset, i, nm; kw...) where {T}
+    eT = Base.IteratorEltype(T) == Base.HasEltype() ? eltype(T) : Any
+    push!(x, construct(StructTypes.StructType(eT), eT, row, prefix, offset, i, nm; kw...))
     return
 end
-
-function construct(::StructTypes.Mutable, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T}
-    prefix = Symbol(prefix, StructTypes.fieldprefix(PT, nm))
-    off = 0
-    x = T()
-    StructTypes.mapfields!(x) do i, nm, TT
-        off += 1
-        construct(StructTypes.StructType(TT), T, row, coloffset[] + col + i - 1, coloffset, prefix, nm, TT; kw...)
-    end
-    coloffset[] += off - 1
-    return x
-end
-
-construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T} = construct(StructTypes.DictType(), PT, row, col, coloffset, prefix, nm, T, Symbol, Any; kw...)
-construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), PT, row, col, coloffset, prefix, nm, T, Symbol, Any; kw...)
-construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{Dict}; kw...) = construct(StructTypes.DictType(), PT, row, col, coloffset, prefix, nm, Dict, String, Any; kw...)
-construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T <: AbstractDict} = construct(StructTypes.DictType(), PT, row, col, coloffset, prefix, nm, T, keytype(T), valtype(T); kw...)
-
-function construct(::StructTypes.DictType, PT, row, col, coloffset, prefix, nm, ::Type{T}, ::Type{K}, ::Type{V}; kw...) where {T, K, V}
-    prefix = String(Symbol(prefix, StructTypes.fieldprefix(PT, nm)))
-    off = 0
-    x = Dict{K, V}()
-    for (i, nm) in enumerate(Tables.columnnames(row))
-        if startswith(String(nm), prefix)
-            val = construct(StructTypes.StructType(V), T, row, i, Ref{Int}(0), Symbol(), nm, V; kw...)
-            off += 1
-            if K == Symbol
-                x[nm] = val
-            else
-                x[StructTypes.construct(K, String(nm))] = val
-            end
-        end
-    end
-    coloffset[] += off
-    return StructTypes.construct(T, x; kw...)
-end
-
-function construct(::StructTypes.ArrayType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T}
-    eT = Base.IteratorEltype(T) == Base.HasEltype() ? eltype(T) : Any
-    return StructTypes.construct(T, [construct(StructTypes.StructType(eT), PT, row, col, coloffset, prefix, nm, eT; kw...)]; kw...)
-end
-
-function construct!(::StructTypes.ArrayType, PT, row, col, coloffset, prefix, nm, ::Type{T}, v; kw...) where {T}
-    eT = Base.IteratorEltype(T) == Base.HasEltype() ? eltype(T) : Any
-    push!(v, construct(StructTypes.StructType(eT), PT, row, col, coloffset, prefix, nm, eT; kw...))
-    return
-end
-
-# for all other construct!, we ignore
-construct!(ST, PT, row, col, coloffset, prefix, nm, T, v; kw...) = nothing
-
-# scalar handlers (take a `col` argument)
-getvalue(row, ::Type{T}, col::Int, nm::Symbol) where {T} = Tables.getcolumn(row, T, col, nm)
-getvalue(row, ::Type{T}, col::Int, nm::Int) where {T} = Tables.getcolumn(row, nm)
-
-construct(::StructTypes.Struct, PT, row, col, coloffset, prefix, nm, ::Type{Any}; kw...) = getvalue(row, Any, col, Symbol(prefix, nm))
-construct(::StructTypes.Struct, PT, row, col, coloffset, prefix, nm, U::Union; kw...) = getvalue(row, U, col, Symbol(prefix, nm))
-construct(::StructTypes.StringType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T} = StructTypes.construct(T, getvalue(row, T, col, Symbol(prefix, nm)))
-construct(::StructTypes.NumberType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T} =
-    StructTypes.construct(T, StructTypes.numbertype(T)(getvalue(row, T, col, Symbol(prefix, nm))))
-construct(::StructTypes.BoolType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T} = StructTypes.construct(T, getvalue(row, T, col, Symbol(prefix, nm)))
-construct(::StructTypes.NullType, PT, row, col, coloffset, prefix, nm, ::Type{T}; kw...) where {T} = StructTypes.construct(T, getvalue(row, T, col, Symbol(prefix, nm)))
 
 # deconstruct
 
