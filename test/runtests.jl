@@ -177,3 +177,49 @@ experiment = Strapping.construct(Experiment, tbl2)
 @test experiment.id == 1
 @test experiment.name == "exp1"
 @test experiment.testresults.values == [3.14, 3.15, 3.16]
+
+struct Service
+    id::String
+    data::NamedTuple
+end
+StructTypes.StructType(::Type{Service}) = StructTypes.Struct()
+StructTypes.idproperty(::Type{Service}) = :id
+StructTypes.fieldprefix(::Type{Service}, nm::Symbol) = Symbol()
+
+Tables.isrowtable(::Type{Service}) = true
+
+function Tables.getcolumn(row::Service,i::Int)
+    if i == 1
+        return getfield(row,1)
+    else
+        return row.data[i-1]
+    end
+end
+
+function Tables.getcolumn(row::Service,nm::Symbol)
+    if nm == :id
+        return row.id
+    else
+        return getproperty(row.data,nm)
+    end
+end
+
+function Tables.columnnames(row::Service)
+    vcat(:id,keys(row.data)...)
+end
+
+x = Service("qux",(a=1,b=3))
+xd = Strapping.deconstruct(x)
+xc = Strapping.construct(Service,xd)
+
+@test xc.id == "qux"
+@test xc.data == (a=1, b=3)
+
+x2 = Service("foo",(a=1,b=3))
+X = [x,x2]
+Xd = Strapping.deconstruct(X)
+Xc = Strapping.construct(Vector{Service},Xd)
+
+@test length(Xc) == 2
+@test Xc[2].id == "foo"
+@test Xc[2].data == (a=1, b=3)
