@@ -59,9 +59,9 @@ end
 
 StructTypes.StructType(::Type{AB3}) = StructTypes.Struct()
 
-tbl3 = (a=[10], ab_a=[10], ab_b=[3.14])
+tbl3 = (a=[1], ab_a=[10], ab_b=[3.14])
 
-ab3 = AB3(10, AB(10, 3.14))
+ab3 = AB3(1, AB(10, 3.14))
 @test Strapping.construct(AB3, tbl3) == ab3
 @test Strapping.construct(Vector{AB3}, tbl3) == [ab3]
 
@@ -150,3 +150,30 @@ tbl2 = Tables.columntable(tbl)
 @test tbl2.a == [1]
 @test tbl2.b_aa == [2]
 @test tbl2.b_bb == [3]
+
+#8
+struct TestResult
+    id::Int
+    values::Vector{Float64}
+end
+StructTypes.StructType(::Type{TestResult}) = StructTypes.Struct()
+StructTypes.idproperty(::Type{TestResult}) = :id
+
+tbl = (id=[1, 1, 1, 2, 2, 2], values=[3.14, 3.15, 3.16, 40.1, 0.01, 2.34])
+testresult = Strapping.construct(Vector{TestResult}, tbl)
+
+struct Experiment
+    id::Int
+    name::String
+    testresults::TestResult
+end
+StructTypes.StructType(::Type{Experiment}) = StructTypes.Struct()
+StructTypes.idproperty(::Type{Experiment}) = :id
+
+StructTypes.fieldprefix(::Type{Experiment}, nm::Symbol) = nm == :testresults ? :testresults_ : :_
+
+tbl2 = (id=[1, 1, 1], name=["exp1", "exp1", "exp1"], testresults_id=[1, 1, 1], testresults_values=[3.14, 3.15, 3.16])
+experiment = Strapping.construct(Experiment, tbl2)
+@test experiment.id == 1
+@test experiment.name == "exp1"
+@test experiment.testresults.values == [3.14, 3.15, 3.16]
