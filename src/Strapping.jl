@@ -242,7 +242,26 @@ function construct(::StructTypes.DictType, ::Type{T}, row, ::Type{K}, ::Type{V};
     return StructTypes.construct(T, x; kw...)
 end
 
-@noinline construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T} = aggregatefieldserror(T)
+construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T} = construct(StructTypes.DictType(), T, row, prefix, offset, i, nm, Symbol, Any; kw...)
+construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), T, row, prefix, offset, i, nm, Symbol, Any; kw...)
+construct(::StructTypes.DictType, ::Type{Dict}, row, prefix, offset, i, nm; kw...) = construct(StructTypes.DictType(), Dict, row, prefix, offset, i, nm, String, Any; kw...)
+construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T <: AbstractDict} = construct(StructTypes.DictType(), T, row, prefix, offset, i, nm, keytype(T), valtype(T); kw...)
+
+function construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm, ::Type{K}, ::Type{V}; kw...) where {T, K, V}
+    (V === Any || !(StructTypes.StructType(V) isa AggregateStructTypes)) || aggregatefieldserror(T)
+    x = Dict{K, V}()
+    nms = Tables.columnnames(row)
+    for j = i:length(nms)
+        nm = nms[j]
+        val = construct(StructTypes.StructType(V), V, row, prefix, offset, j, nm; kw...)
+        if K === Symbol
+            x[nm] = val
+        else
+            x[StructTypes.construct(K, String(nm))] = val
+        end
+    end
+    return StructTypes.construct(T, x; kw...)
+end
 
 function construct!(::StructTypes.DictType, x::T, row; kw...) where {T}
     for (i, nm) in enumerate(Tables.columnnames(row))
