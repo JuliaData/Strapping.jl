@@ -106,21 +106,63 @@ ab5 = AB5(10, AB3(10, AB(10, 3.14)))
 
 struct AB6
     a::Int
-    b::Vector{Float64}
-    c::AB
-    d::Vector{AB}
+    b::AB
+    c::Vector{AB}
 end
 
-Base.:(==)(a::AB6, b::AB6) = a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d
+Base.:(==)(a::AB6, b::AB6) = a.a == b.a && a.b == b.b && a.c == b.c
 StructTypes.StructType(::Type{AB6}) = StructTypes.Struct()
 StructTypes.idproperty(::Type{AB6}) = :a
 
-tbl6 = (a=[1, 1, 1], b=[3.14, 3.15, 3.16], c_a=[2, 2, 2], c_b=[0.01, 0.01, 0.01], d_a=[10, 11, 12], d_b=[1.1, 2.2, 3.3])
+tbl6 = (a=[1, 1, 1], b_a=[2, 2, 2], b_b=[0.01, 0.01, 0.01], c_a=[10, 11, 12], c_b=[1.1, 2.2, 3.3])
 
-ab6 = AB6(1, [3.14, 3.15, 3.16], AB(2, 0.01), [AB(10, 1.1), AB(11, 2.2), AB(12, 3.3)])
+ab6 = AB6(1, AB(2, 0.01), [AB(10, 1.1), AB(11, 2.2), AB(12, 3.3)])
 @test Strapping.construct(AB6, tbl6) == ab6
 @test Strapping.construct(Vector{AB6}, tbl6) == [ab6]
 @test columntable(Strapping.deconstruct(ab6)) == tbl6
+
+# https://github.com/JuliaData/Strapping.jl/issues/12
+struct AB7
+    id::Int
+    values::Vector{Float64}
+end
+
+Base.:(==)(a::AB7, b::AB7) = a.id == b.id && a.values == b.values
+StructTypes.StructType(::Type{AB7}) = StructTypes.Struct()
+StructTypes.idproperty(::Type{AB7}) = :id
+
+ab7 = AB7(1, Float64[])
+tbl = columntable(Strapping.deconstruct(ab7))
+@test tbl.id[1] == 1
+@test tbl.values[1] === missing
+
+struct AB9
+    a::Int
+    b::String
+    c::Float64
+    d::String
+    e::Int
+    f::String
+end
+StructTypes.StructType(::Type{AB9}) = StructTypes.Struct()
+
+struct AB10
+    id::Int
+    ab9::AB9
+end
+StructTypes.StructType(::Type{AB10}) = StructTypes.Struct()
+
+struct AB11
+    id::Int
+    ab10::AB10
+end
+StructTypes.StructType(::Type{AB11}) = StructTypes.Struct()
+
+ab11 = AB11(1, AB10(2, AB9(3, "4", 5.0, "6", 7, "8")))
+tbl = columntable(Strapping.deconstruct(ab11))
+@test length(tbl) == 8
+@test tbl.id[1] == 1
+@test tbl[end][1] == "8"
 
 # https://github.com/JuliaData/Strapping.jl/issues/3
 struct TestStruct
