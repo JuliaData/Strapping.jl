@@ -265,3 +265,17 @@ Xc = Strapping.construct(Vector{Service},Xd)
 @test length(Xc) == 2
 @test Xc[2].id == "foo"
 @test Xc[2].data == (a=1, b=3)
+
+struct Wrapper
+    x::NamedTuple{(:a, :b), Tuple{Int, String}}
+end
+
+StructTypes.StructType(::Type{Wrapper}) = StructTypes.CustomStruct()
+StructTypes.lower(x::Wrapper) = x.x
+StructTypes.lowertype(::Type{Wrapper}) = fieldtype(Wrapper, :x)
+w = Wrapper((a=1, b="hey"))
+
+tbl = Strapping.deconstruct(w) |> Tables.columntable
+@test tbl == (a = [1], b = ["hey"])
+w2 = Strapping.construct(Wrapper, tbl)
+@test w == w2

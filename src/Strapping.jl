@@ -138,6 +138,12 @@ end
 # aggregate handlers
 # construct versions construct initial object
 # construct! versions take existing object and append additional elements to collection fields
+function construct(::StructTypes.CustomStruct, ::Type{T}, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
+    S = StructTypes.lowertype(T)
+    x = construct(StructTypes.StructType(S), S, row, prefix, offset; kw...)
+    return StructTypes.construct(T, x)
+end
+
 function construct(::StructTypes.Struct, ::Type{T}, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
     # @print 3 (T, prefix, offset)
     return StructTypes.construct(T) do i, nm, TT
@@ -147,9 +153,14 @@ function construct(::StructTypes.Struct, ::Type{T}, row, prefix=Symbol(), offset
     end
 end
 
-function construct(::ST, ::Type{T}, row, prefix, offset, i, nm; kw...) where {ST <: Union{StructTypes.Struct, StructTypes.Mutable}, T}
+function construct(::ST, ::Type{T}, row, prefix, offset, i, nm; kw...) where {ST <: Union{StructTypes.Struct, StructTypes.Mutable, StructTypes.CustomStruct}, T}
     # @print 3 (T, prefix, offset, i, nm)
     construct(ST(), T, row, prefix, offset; kw...)
+end
+
+function construct!(::StructTypes.CustomStruct, x::T, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
+    y = StructTypes.lower(x)
+    return construct!(StructTypes.StructType(y), y, row, prefix, offset; kw...)
 end
 
 function construct!(::Union{StructTypes.Struct, StructTypes.Mutable}, x::T, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
@@ -161,7 +172,7 @@ function construct!(::Union{StructTypes.Struct, StructTypes.Mutable}, x::T, row,
     end
 end
 
-function construct!(::ST, x::T, row, prefix, offset, i, nm; kw...) where {ST <: Union{StructTypes.Struct, StructTypes.Mutable}, T}
+function construct!(::ST, x::T, row, prefix, offset, i, nm; kw...) where {ST <: Union{StructTypes.Struct, StructTypes.Mutable, StructTypes.CustomStruct}, T}
     # @print 3 (T, prefix, offset, i, nm)
     construct!(ST(), x, row, prefix, offset; kw...)
 end
@@ -363,6 +374,11 @@ function getfieldvalue(::Union{StructTypes.Struct, StructTypes.Mutable}, x, ind,
     return getfieldvalue(val, ind, fn.subfield)
 end
 
+function getfieldvalue(::StructTypes.CustomStruct, x, ind, fn)
+    y = StructTypes.lower(x)
+    return getfieldvalue(StructTypes.StructType(y), y, ind, fn)
+end
+
 function getfieldvalue(ST, x, ind, fn)
     @assert fn === nothing
     return x
@@ -471,6 +487,11 @@ function (f::DeconstructClosure)(::Union{StructTypes.Struct, StructTypes.Mutable
         f(i, nm, TT, v)
     end
     return
+end
+
+function (f::DeconstructClosure)(::StructTypes.CustomStruct, x::T) where {T}
+    y = StructTypes.lower(x)
+    return f(StructTypes.StructType(y), y)
 end
 
 function (f::DeconstructClosure)(::StructTypes.DictType, x::T) where {T}
