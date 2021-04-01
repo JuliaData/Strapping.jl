@@ -228,6 +228,7 @@ construct(::StructTypes.Struct, ::Type{Any}, row, prefix=Symbol(), offset=Ref(0)
 
 # note these don't take `prefix`/`offset` args because we don't expect them to ever be called with a prefix/offset (i.e. only called from line 117)
 construct(::StructTypes.DictType, ::Type{T}, row; kw...) where {T} = construct(StructTypes.DictType(), T, row, Symbol, Any; kw...)
+construct(::StructTypes.Struct, ::Type{T}, row; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), T, row, Symbol, Any; kw...)
 construct(::StructTypes.DictType, ::Type{T}, row; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), T, row, Symbol, Any; kw...)
 construct(::StructTypes.DictType, ::Type{Dict}, row; kw...) = construct(StructTypes.DictType(), Dict, row, String, Any; kw...)
 construct(::StructTypes.DictType, ::Type{T}, row; kw...) where {T <: AbstractDict} = construct(StructTypes.DictType(), T, row, keytype(T), valtype(T); kw...)
@@ -253,7 +254,9 @@ function construct(::StructTypes.DictType, ::Type{T}, row, ::Type{K}, ::Type{V};
     return StructTypes.construct(T, x; kw...)
 end
 
+# construct(::StructTypes.Struct, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), T, row, prefix, offset, i, nm; kw...)
 construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T} = construct(StructTypes.DictType(), T, row, prefix, offset, i, nm, Symbol, Any; kw...)
+construct(::StructTypes.Struct, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), T, row, prefix, offset, i, nm, Symbol, Any; kw...)
 construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T <: NamedTuple} = construct(StructTypes.DictType(), T, row, prefix, offset, i, nm, Symbol, Any; kw...)
 construct(::StructTypes.DictType, ::Type{Dict}, row, prefix, offset, i, nm; kw...) = construct(StructTypes.DictType(), Dict, row, prefix, offset, i, nm, String, Any; kw...)
 construct(::StructTypes.DictType, ::Type{T}, row, prefix, offset, i, nm; kw...) where {T <: AbstractDict} = construct(StructTypes.DictType(), T, row, prefix, offset, i, nm, keytype(T), valtype(T); kw...)
