@@ -279,3 +279,4 @@ tbl = Strapping.deconstruct(w) |> Tables.columntable
 @test tbl == (a = [1], b = ["hey"])
 w2 = Strapping.construct(Wrapper, tbl)
 @test w == w2
+

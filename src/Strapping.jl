@@ -145,7 +145,7 @@ function construct(::StructTypes.CustomStruct, ::Type{T}, row, prefix=Symbol(), 
 end
 
 function construct(::StructTypes.Struct, ::Type{T}, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
-    # @print 3 (T, prefix, offset)
+    # @show (T, T isa Union, prefix, offset)
     return StructTypes.construct(T) do i, nm, TT
         x = construct(StructTypes.StructType(TT), TT, row, Symbol(prefix, StructTypes.fieldprefix(T, nm)), offset, offset[] + 1, Symbol(prefix, nm); kw...)
         # @print 3 x
@@ -155,7 +155,11 @@ end
 
 function construct(::ST, ::Type{T}, row, prefix, offset, i, nm; kw...) where {ST <: Union{StructTypes.Struct, StructTypes.Mutable, StructTypes.CustomStruct}, T}
     # @print 3 (T, prefix, offset, i, nm)
-    construct(ST(), T, row, prefix, offset; kw...)
+    if T isa Union
+        construct(ST(), Any, row, prefix, offset, i, nm; kw...)
+    else
+        construct(ST(), T, row, prefix, offset; kw...)
+    end
 end
 
 function construct!(::StructTypes.CustomStruct, x::T, row, prefix=Symbol(), offset=Ref(0); kw...) where {T}
