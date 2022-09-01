@@ -378,6 +378,7 @@ getfieldvalue(::StructTypes.ArrayType, x, ind, fn) = isempty(x) ? missing : getf
 
 function getfieldvalue(::Union{StructTypes.Struct, StructTypes.Mutable}, x, ind, fn)
     val = Core.getfield(x, fn.index)
+    # @show val, ind, x, fn, fn.index, fn.subfield
     return getfieldvalue(val, ind, fn.subfield)
 end
 
@@ -387,6 +388,7 @@ function getfieldvalue(::StructTypes.CustomStruct, x, ind, fn)
 end
 
 function getfieldvalue(ST, x, ind, fn)
+    # @show ST, x, ind, fn
     @assert fn === nothing
     return x
 end
@@ -486,11 +488,11 @@ struct EmptyArrayTypeValue end
 function (f::DeconstructClosure)(::Union{StructTypes.Struct, StructTypes.Mutable}, x::T) where {T}
     # x is root object
     reset!(f)
-    f.parentType = T
     StructTypes.foreachfield(x) do i, nm, TT, v
         # each root field is a separate prefix/fieldnode ancestry branch
         f.prefix = Symbol()
         f.fieldnode = nothing
+        f.parentType = T
         f(i, nm, TT, v)
     end
     return
@@ -519,18 +521,28 @@ end
 (f::DeconstructClosure)(i, nm, TT, v; kw...) = f(StructTypes.StructType(TT), i, nm, TT, v)
 (f::DeconstructClosure)(i, nm, TT; kw...) = f(StructTypes.StructType(TT), i, nm, TT, EmptyArrayTypeValue())
 function (f::DeconstructClosure)(::Union{StructTypes.Struct, StructTypes.Mutable}, i, nm, TT, v)
-    f.prefix = Symbol(f.prefix, StructTypes.fieldprefix(f.parentType, nm))
-    f.parentType = TT
-    f.fieldnode = getfieldnode(f, FieldNode(i, nm, nothing))
-    StructTypes.foreachfield(f, v)
+    prefix = Symbol(f.prefix, StructTypes.fieldprefix(f.parentType, nm))
+    fieldnode = getfieldnode(f, FieldNode(i, nm, nothing))
+    StructTypes.foreachfield(v) do i2, nm2, TT2, v2
+        # reset prefix, parentType, fieldnode for each field
+        f.prefix = prefix
+        f.parentType = TT
+        f.fieldnode = fieldnode
+        f(i2, nm2, TT2, v2)
+    end
     return
 end
 
 function (f::DeconstructClosure)(::Union{StructTypes.Struct, StructTypes.Mutable}, i, nm, TT, ::EmptyArrayTypeValue)
-    f.prefix = Symbol(f.prefix, StructTypes.fieldprefix(f.parentType, nm))
-    f.parentType = TT
-    f.fieldnode = getfieldnode(f, FieldNode(i, nm, nothing))
-    StructTypes.foreachfield(f, TT)
+    prefix = Symbol(f.prefix, StructTypes.fieldprefix(f.parentType, nm))
+    fieldnode = getfieldnode(f, FieldNode(i, nm, nothing))
+    StructTypes.foreachfield(TT) do i2, nm2, TT2, v2
+        # reset prefix, parentType, fieldnode for each field
+        f.prefix = prefix
+        f.parentType = TT
+        f.fieldnode = fieldnode
+        f(i2, nm2, TT2, v2)
+    end
     return
 end
 
@@ -565,7 +577,10 @@ function (f::DeconstructClosure)(::StructTypes.ArrayType, i, nm, TT, v)
     return
 end
 
-function (f::DeconstructClosure)(ST, i, nm, TT, v)
+(f::DeconstructClosure)(ST::StructTypes.Struct, i, nm, U::Union, v) = deconstruct_leaf(f, i, nm, U)
+(f::DeconstructClosure)(ST, i, nm, TT, v) = deconstruct_leaf(f, i, nm, TT)
+
+function deconstruct_leaf(f::DeconstructClosure, i, nm, TT)
     if f.i > length(f.names)
         # first time deconstructing obj
         push!(f.names, Symbol(f.prefix, nm))
