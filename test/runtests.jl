@@ -280,3 +280,44 @@ tbl = Strapping.deconstruct(w) |> Tables.columntable
 w2 = Strapping.construct(Wrapper, tbl)
 @test w == w2
 
+struct OptionalLeaf{T, N}
+    value::Union{T, N}
+end
+StructTypes.StructType(::Type{OptionalLeaf{T, N}}) where {T, N} = StructTypes.Struct()
+
+struct OptionalNested{T, N}
+    leaf::OptionalLeaf{T, N}
+    id::Int
+end
+StructTypes.StructType(::Type{OptionalNested{T, N}}) where {T, N} = StructTypes.Struct()
+
+@testset "Optional struct leaf columns" begin
+    for value in (AB(1, 2.5), ABM(1, 2.5), (a=1, b="value"))
+        T = typeof(value)
+        for (N, null) in ((Nothing, nothing), (Missing, missing))
+            Object = OptionalNested{T, N}
+            objects = [Object(OptionalLeaf{T, N}(null), 1), Object(OptionalLeaf{T, N}(value), 2)]
+            for inputs in (objects, reverse(objects), objects[1:1], objects[2:2])
+                rows = Strapping.deconstruct(inputs)
+                @test Tables.schema(rows).names == (:leaf_value, :id)
+                @test Tables.schema(rows).types == (Union{T, N}, Int)
+                columns = Tables.columntable(rows)
+                @test columns.id == [x.id for x in inputs]
+                @test all(columns.leaf_value[i] === inputs[i].leaf.value for i in eachindex(inputs))
+                @test isequal(Tables.rowtable(rows), [(leaf_value=x.leaf.value, id=x.id) for x in inputs])
+                restored = Strapping.construct(Vector{Object}, rows)
+                @test [x.id for x in restored] == columns.id
+                @test all(restored[i].leaf.value === inputs[i].leaf.value for i in eachindex(inputs))
+            end
+            for input in objects
+                columns = Tables.columntable(Strapping.deconstruct(input))
+                @test columns.leaf_value[1] === input.leaf.value
+                @test columns.id == [input.id]
+                dictrows = Strapping.deconstruct(Dict(:leaf => input.leaf))
+                @test Tables.schema(dictrows).names == (:leaf_value,)
+                @test Tables.schema(dictrows).types == (Union{T, N},)
+                @test Tables.columntable(dictrows).leaf_value[1] === input.leaf.value
+            end
+        end
+    end
+end
