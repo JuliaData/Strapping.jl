@@ -377,6 +377,7 @@ end
 getfieldvalue(::StructTypes.ArrayType, x, ind, fn) = isempty(x) ? missing : getfieldvalue(x[ind], 0, fn)
 
 function getfieldvalue(::Union{StructTypes.Struct, StructTypes.Mutable}, x, ind, fn)
+    fn === nothing && return x
     val = Core.getfield(x, fn.index)
     # @show val, ind, x, fn, fn.index, fn.subfield
     return getfieldvalue(val, ind, fn.subfield)
