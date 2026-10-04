@@ -537,12 +537,12 @@ end
 function (f::DeconstructClosure)(::Union{StructTypes.Struct, StructTypes.Mutable}, i, nm, TT, ::EmptyArrayTypeValue)
     prefix = Symbol(f.prefix, StructTypes.fieldprefix(f.parentType, nm))
     fieldnode = getfieldnode(f, FieldNode(i, nm, nothing))
-    StructTypes.foreachfield(TT) do i2, nm2, TT2, v2
+    StructTypes.foreachfield(TT) do i2, nm2, TT2
         # reset prefix, parentType, fieldnode for each field
         f.prefix = prefix
         f.parentType = TT
         f.fieldnode = fieldnode
-        f(i2, nm2, TT2, v2)
+        f(i2, nm2, TT2)
     end
     return
 end
@@ -579,6 +579,7 @@ function (f::DeconstructClosure)(::StructTypes.ArrayType, i, nm, TT, v)
 end
 
 (f::DeconstructClosure)(ST::StructTypes.Struct, i, nm, U::Union, v) = deconstruct_leaf(f, i, nm, U)
+(f::DeconstructClosure)(::StructTypes.Struct, i, nm, U::Union, ::EmptyArrayTypeValue) = deconstruct_leaf(f, i, nm, U)
 (f::DeconstructClosure)(ST, i, nm, TT, v) = deconstruct_leaf(f, i, nm, TT)
 
 function deconstruct_leaf(f::DeconstructClosure, i, nm, TT)
