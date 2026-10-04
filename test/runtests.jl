@@ -313,6 +313,10 @@ StructTypes.StructType(::Type{OptionalNested{T, N}}) where {T, N} = StructTypes.
                 columns = Tables.columntable(Strapping.deconstruct(input))
                 @test columns.leaf_value[1] === input.leaf.value
                 @test columns.id == [input.id]
+                dictrows = Strapping.deconstruct(Dict(:leaf => input.leaf))
+                @test Tables.schema(dictrows).names == (:leaf_value,)
+                @test Tables.schema(dictrows).types == (Union{T, N},)
+                @test Tables.columntable(dictrows).leaf_value[1] === input.leaf.value
             end
         end
     end
