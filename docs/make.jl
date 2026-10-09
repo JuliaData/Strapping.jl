@@ -1,18 +1,28 @@
-using Documenter, Strapping
+using Documenter
+using Strapping
 
-makedocs(;
-    modules=[Strapping],
-    format=Documenter.HTML(),
-    pages=[
+DocMeta.setdocmeta!(Strapping, :DocTestSetup, :(using Strapping); recursive = true)
+
+makedocs(
+    modules = [Strapping],
+    sitename = "Strapping.jl",
+    authors = "Jacob Quinn and contributors",
+    format = Documenter.HTML(
+        prettyurls = true,
+        canonical = "https://juliadata.github.io/Strapping.jl/stable/",
+        collapselevel = 2,
+    ),
+    pages = [
         "Home" => "index.md",
+        "Manual" => [
+            "Mapping guide" => "guide.md",
+            "Related objects example" => "example.md",
+            "Version 2 migration" => "migration.md",
+        ],
+        "API reference" => "api.md",
     ],
-    repo="https://github.com/JuliaData/Strapping.jl/blob/{commit}{path}#L{line}",
-    sitename="Strapping.jl",
-    authors="Jacob Quinn",
-    assets=String[],
+    pagesonly = true,
+    checkdocs = :exports,
 )
 
-deploydocs(;
-    repo="github.com/JuliaData/Strapping.jl",
-    devbranch = "main"
-)
+deploydocs(repo = "github.com/JuliaData/Strapping.jl.git", devbranch = "main")

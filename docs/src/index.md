@@ -1,27 +1,51 @@
+```@meta
+CurrentModule = Strapping
+Description = "Map Julia structs to and from Tables.jl-compatible data with StructUtils.jl."
+```
+
 # Strapping.jl
 
-This guide provides documentation around the `Strapping.construct` and `Strapping.deconstruct` functions.
-This package was born from a desire for straightforward, not-too-magical ORM capabilities in Julia, which
-means being able to transform, for example, 2D SQL query results from a database into a `Vector` of custom
-application objects, without having to write your own adapter code. Strapping.jl integrates with the
-[StructTypes.jl](https://github.com/JuliaData/StructTypes.jl) package, which allows customizing Julia structs
-and their fields.
+Strapping converts concrete Julia structs to and from two-dimensional table
+data. It is useful at the seam between domain objects and CSV files, Arrow
+tables, data frames, or database query results.
 
-If anything isn't clear or you find bugs, don't hesitate to [open a new issue](https://github.com/JuliaData/Strapping.jl/issues/new), even just for a question, or come chat with us on the
-[#data](https://julialang.slack.com/messages/data/) slack channel with questions, concerns, or clarifications.
+The package has two main operations:
 
-```@contents
-Depth = 2
+- [`Strapping.construct`](@ref) builds one struct or a vector of structs from
+  a Tables.jl-compatible source.
+- [`Strapping.deconstruct`](@ref) exposes one struct or a vector of structs as
+  a Tables.jl row table.
+
+Strapping delegates field construction and value conversion to StructUtils.jl.
+This keeps the interface small and lets the same field tags, defaults,
+`lift`, and `lower` methods work across packages.
+
+## Installation
+
+```julia
+import Pkg
+Pkg.add("Strapping")
 ```
 
-## `Strapping.construct`
+## Quick start
 
-```@docs
-Strapping.construct
+```@example quickstart
+using Strapping, Tables
+
+struct Point
+    x::Int
+    y::Float64
+end
+
+points = Strapping.construct(Vector{Point}, (y=[2.5, 3.5], x=[1, 2]))
+@assert points == [Point(1, 2.5), Point(2, 3.5)]
+
+table = Strapping.deconstruct(points)
+@assert Tables.columntable(table) == (x=[1, 2], y=[2.5, 3.5])
+nothing
 ```
 
-## `Strapping.deconstruct`
+Column order does not matter. Strapping matches columns by field name.
 
-```@docs
-Strapping.deconstruct
-```
+Continue with the [mapping guide](@ref Mapping-guide) or the complete
+[related objects example](@ref Related-objects-example).

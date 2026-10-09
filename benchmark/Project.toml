@@ -1,11 +1,11 @@
 [deps]
-Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Strapping = "3787371a-436b-4cb0-be6b-e772a55e3ebe"
 StructUtils = "ec057cc2-7a8d-4b58-b3b3-92acb9f63b42"
 Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 
 [compat]
-Documenter = "1"
+BenchmarkTools = "1"
 Strapping = "2"
 StructUtils = "2.8.5"
 Tables = "1"

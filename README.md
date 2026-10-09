@@ -1,19 +1,43 @@
-### Strapping.jl
+# Strapping.jl
 
-[![CI](https://github.com/JuliaData/Strapping.jl/workflows/CI/badge.svg)](https://github.com/JuliaData/Strapping.jl/actions?query=workflow%3ACI)
-[![codecov](https://codecov.io/gh/JuliaData/Strapping.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaData/Strapping.jl)
-[![deps](https://juliahub.com/docs/Strapping/deps.svg)](https://juliahub.com/ui/Packages/Strapping/n0fkj?t=2)
-[![version](https://juliahub.com/docs/Strapping/version.svg)](https://juliahub.com/ui/Packages/Strapping/n0fkj)
-[![pkgeval](https://juliahub.com/docs/Strapping/pkgeval.svg)](https://juliahub.com/ui/Packages/Strapping/n0fkj)
+[![CI](https://github.com/JuliaData/Strapping.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaData/Strapping.jl/actions/workflows/ci.yml)
+[![Stable documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://juliadata.github.io/Strapping.jl/stable/)
+[![Development documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://juliadata.github.io/Strapping.jl/dev/)
 
-"Strapping" stands for **ST**ruct **R**elational M**APPING**, and provides ORM-like functionality for Julia, including:
+Strapping maps Julia structs to and from any Tables.jl-compatible source. It
+uses StructUtils.jl for construction, field metadata, and custom value
+conversion. It has no StructTypes.jl dependency.
 
-* automatically constructing Julia structs from any [Tables.jl](https://github.com/JuliaData/Tables.jl)-compatible source (see `?Strapping.construct`)
-* ability to handle complicated aggregate types, with aggregate or collection fields
-* integration with the [StructTypes.jl](https://github.com/JuliaData/StructTypes.jl) package for specifying struct and struct field options
-* transform any Julia struct (or vector of structs) into a 2D Tables.jl-compatible source, which can be stored in a database, file format, or other "sink" (see `?Strapping.deconstruct`)
+```julia
+using Strapping, StructUtils, Tables
 
-### Documentation
+struct Member
+    id::Int
+    name::String
+end
+Base.:(==)(a::Member, b::Member) = a.id == b.id && a.name == b.name
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://juliadata.github.io/Strapping.jl/stable)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://juliadata.github.io/Strapping.jl/dev)
+StructUtils.@tags struct Club
+    id::Int &(strapping=(id=true,),)
+    name::String
+    members::Vector{Member}
+end
+Base.:(==)(a::Club, b::Club) =
+    a.id == b.id && a.name == b.name && a.members == b.members
+
+club = Club(1, "chess club", [Member(1, "John"), Member(2, "Mary")])
+table = Strapping.deconstruct(club)
+
+Tables.columntable(table)
+# (id = [1, 1], name = ["chess club", "chess club"],
+#  members__length = [2, 2], members_id = [1, 2],
+#  members_name = ["John", "Mary"])
+
+Strapping.construct(Club, table) == club
+# true
+```
+
+The public surface is intentionally namespaced. Use
+`Strapping.construct`, `Strapping.deconstruct`, and `Strapping.Style`.
+See the [manual](https://juliadata.github.io/Strapping.jl/dev/) for nullable
+nested values, collection grouping, field tags, and the version 2 migration.
