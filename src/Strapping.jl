@@ -370,6 +370,7 @@ end
 getfieldvalue(x::T, ind, fn) where {T} = getfieldvalue(StructTypes.StructType(T), x, ind, fn)
 
 function getfieldvalue(::StructTypes.DictType, x, ind, fn)
+    fn === nothing && return x
     val = x[fn.name]
     return getfieldvalue(val, ind, fn.subfield)
 end
