@@ -9,7 +9,6 @@ makedocs(;
     repo="https://github.com/JuliaData/Strapping.jl/blob/{commit}{path}#L{line}",
     sitename="Strapping.jl",
     authors="Jacob Quinn",
-    assets=String[],
 )
 
 deploydocs(;

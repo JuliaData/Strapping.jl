@@ -280,3 +280,15 @@ tbl = Strapping.deconstruct(w) |> Tables.columntable
 w2 = Strapping.construct(Wrapper, tbl)
 @test w == w2
 
+struct OptionalLeaf
+    ab::Union{Nothing, AB}
+    d::Union{Missing, Dict{String, Int}}
+end
+StructTypes.StructType(::Type{OptionalLeaf}) = StructTypes.Struct()
+
+@testset "Optional struct and dict leaf columns" begin
+    xs = [OptionalLeaf(nothing, missing), OptionalLeaf(AB(1, 2.5), Dict("a" => 1))]
+    tbl = Tables.columntable(Strapping.deconstruct(xs))
+    @test isequal(tbl, (ab = [nothing, AB(1, 2.5)], d = [missing, Dict("a" => 1)]))
+    @test isequal(Strapping.construct(Vector{OptionalLeaf}, tbl), xs)
+end
