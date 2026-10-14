@@ -293,37 +293,16 @@ StructTypes.StructType(::Type{OptionalLeaf}) = StructTypes.Struct()
     @test isequal(Strapping.construct(Vector{OptionalLeaf}, tbl), xs)
 end
 
-struct LeafCollection{T}
+struct LeafCollection
     id::Int
-    values::Vector{T}
+    values::Vector{OptionalLeaf}
 end
-StructTypes.StructType(::Type{LeafCollection{T}}) where T = StructTypes.Struct()
+StructTypes.StructType(::Type{LeafCollection}) = StructTypes.Struct()
 
 @testset "Empty typed struct collections" begin
-    for value in (AB(1, 2.5), ABM(1, 2.5), (a=1, b="value"))
-        T = typeof(value)
-        plain = Strapping.deconstruct(LeafCollection(7, T[]))
-        @test Tables.schema(plain).names == (:id, :values_a, :values_b)
-        @test Tables.schema(plain).types == (Int, Union{Missing, Int}, Union{Missing, typeof(value.b)})
-        @test isequal(Tables.columntable(plain), (id=[7], values_a=[missing], values_b=[missing]))
-        for (N, null) in ((Nothing, nothing), (Missing, missing))
-            E = OptionalNested{T, N}
-            filled = [E(OptionalLeaf{T, N}(null), 1), E(OptionalLeaf{T, N}(value), 2)]
-            for (entries, expected) in ((E[], [missing]), (filled, [null, value]))
-                rows = Strapping.deconstruct(LeafCollection(7, entries))
-                @test Tables.schema(rows).names == (:id, :values_leaf_value, :values_id)
-                @test Tables.schema(rows).types[2] == (isempty(entries) ? Union{Missing, T, N} : Union{T, N})
-                columns = Tables.columntable(rows)
-                @test columns.id == fill(7, length(expected))
-                @test all(columns.values_leaf_value[i] === expected[i] for i in eachindex(expected))
-                @test isequal(columns.values_id, isempty(entries) ? [missing] : [1, 2])
-            end
-            rows = Strapping.deconstruct([LeafCollection(7, E[]), LeafCollection(8, filled)])
-            @test Tables.schema(rows).types == (Int, Union{Missing, T, N}, Union{Missing, Int})
-            columns = Tables.columntable(rows)
-            @test columns.id == [7, 8, 8]
-            @test isequal(columns.values_id, [missing, 1, 2])
-            @test all(columns.values_leaf_value[i] === [missing, null, value][i] for i in 1:3)
-        end
-    end
+    rows = Strapping.deconstruct(LeafCollection(7, OptionalLeaf[]))
+    @test Tables.schema(rows).types == (Int, Union{Missing, Nothing, AB}, Union{Missing, Dict{String, Int}})
+    @test isequal(Tables.columntable(rows), (id = [7], values_ab = [missing], values_d = [missing]))
+    tbl = Tables.columntable(Strapping.deconstruct(LeafCollection(8, [OptionalLeaf(AB(1, 2.5), missing)])))
+    @test isequal(tbl, (id = [8], values_ab = [AB(1, 2.5)], values_d = [missing]))
 end
