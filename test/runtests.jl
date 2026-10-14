@@ -292,3 +292,17 @@ StructTypes.StructType(::Type{OptionalLeaf}) = StructTypes.Struct()
     @test isequal(tbl, (ab = [nothing, AB(1, 2.5)], d = [missing, Dict("a" => 1)]))
     @test isequal(Strapping.construct(Vector{OptionalLeaf}, tbl), xs)
 end
+
+struct LeafCollection
+    id::Int
+    values::Vector{OptionalLeaf}
+end
+StructTypes.StructType(::Type{LeafCollection}) = StructTypes.Struct()
+
+@testset "Empty typed struct collections" begin
+    rows = Strapping.deconstruct(LeafCollection(7, OptionalLeaf[]))
+    @test Tables.schema(rows).types == (Int, Union{Missing, Nothing, AB}, Union{Missing, Dict{String, Int}})
+    @test isequal(Tables.columntable(rows), (id = [7], values_ab = [missing], values_d = [missing]))
+    tbl = Tables.columntable(Strapping.deconstruct(LeafCollection(8, [OptionalLeaf(AB(1, 2.5), missing)])))
+    @test isequal(tbl, (id = [8], values_ab = [AB(1, 2.5)], values_d = [missing]))
+end
