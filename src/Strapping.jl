@@ -22,6 +22,7 @@ found until the input table is exhausted.
 
 `Strapping.construct` utilizes the [StructTypes.jl](https://github.com/JuliaData/StructTypes.jl) package
 for determining the `StructTypes.StructType` trait of `T` and constructing an instance appropriately:
+
   * `StructTypes.Struct`/`StructTypes.Mutable`: field reflection will be used to retrieve values from the input table row, with field customizations respected, like excluded fields, field-specific keyword args, etc.
   * `StructTypes.DictType`: each column name/value of the table row will be used as a key/value pair to be passed to the `DictType` constructor
   * `StructTypes.ArrayType`: column values will be "collected" as an array to be passed to the `ArrayType` constructor
