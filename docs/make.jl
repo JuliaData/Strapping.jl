@@ -2,11 +2,10 @@ using Documenter, Strapping
 
 makedocs(;
     modules=[Strapping],
-    format=Documenter.HTML(),
+    format=Documenter.HTML(; repolink="https://github.com/JuliaData/Strapping.jl"),
     pages=[
         "Home" => "index.md",
     ],
-    repo="https://github.com/JuliaData/Strapping.jl/blob/{commit}{path}#L{line}",
     sitename="Strapping.jl",
     authors="Jacob Quinn",
 )
